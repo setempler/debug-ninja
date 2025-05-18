@@ -27,18 +27,36 @@ jobs:
       - name: Setup Docker buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Identify pre-release
+        id: pre
+        run: |
+          if [[ "$GITHUB_REF_NAME" =~ - ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
       # https://github.com/docker/metadata-action
-      - name: Extract metadata for Docker Hub
+      - name: Extract metadata for Docker Hub (all versions)
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: setempler/debug-ninja
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}},enable={{matches(tag, '^v[0-9]+\\.[0-9]+(\\.[0-9]+)?$')}}
-            type=semver,pattern={{major}}.{{minor}},enable={{matches(tag, '^v[0-9]+\\.[0-9]+(\\.[0-9]+)?$')}}
-            type=semver,pattern={{major}}.{{minor}}.{{patch}},enable={{matches(tag, '^v[0-9]+\\.[0-9]+(\\.[0-9]+)?$')}}
-            type=raw,value=latest,enable={{matches(tag, '^v[0-9]+\\.[0-9]+(\\.[0-9]+)?$')}}
+
+      # https://github.com/docker/metadata-action
+      - name: Extract metadata for Docker Hub (stable -> latest)
+        if: steps.pre.outputs.is_prerelease == 'false'
+        id: meta_stable
+        uses: docker/metadata-action@v5
+        with:
+          images: setempler/debug-ninja
+          tags: |
+            type=semver,pattern={{major}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}.{{minor}}.{{patch}}
+            type=raw,value=latest
 
       # https://github.com/docker/login-action
       - name: Login to Docker Hub
@@ -54,5 +72,7 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64,linux/arm/v7
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            ${{ steps.meta.outputs.tags }}
+            ${{ steps.meta_stable.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
